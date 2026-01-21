@@ -1,3 +1,5 @@
+pub mod bitcask;
 pub mod types;
 
-pub use types::{Column, ColumnType, Index, Row, TableSchema, Value};
+pub use bitcask::BitcaskStorage;
+pub use types::{Column, ColumnType, Row, TableSchema, Value};

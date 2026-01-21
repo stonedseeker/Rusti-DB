@@ -1,70 +1,45 @@
+mod executor;
 mod storage;
 
-use storage::{Column, ColumnType, Row, TableSchema, Value};
+use executor::QueryExecutor;
+use storage::BitcaskStorage;
 
-fn main() {
-    // Create a table schema
-    let schema = TableSchema::new(
-        "users".to_string(),
-        vec![
-            Column {
-                name: "id".to_string(),
-                column_type: ColumnType::Integer
-            },
-            Column{
-                name:"name".to_string(),
-                column_type: ColumnType::Text
-            },
-            Column{
-                name:"age".to_string(),
-                column_type: ColumnType::Integer
-            }
-        ]
-    );
-    println!("Created schema: {:?}", schema);
+fn main() -> std::io::Result<()> {
+    println!("=== SelfHealDB - SQL Executor Test ===\n");
 
-    // Create a valid row
-    let row1 = Row::new(vec![
-        Value::Integer(1),
-        Value::Text("Vaibhav".to_string()),
-        Value::Integer(23),
-    ]);
+    let storage = BitcaskStorage::new("sqltest.db")?;
+    let mut executor = QueryExecutor::new(storage);
 
-    match schema.validate_row(&row1) {
-        Ok(_) => println!("Row 1 is valid"),
-        Err(e) => println!("Row 1 invalid: {}", e),
+    // Create table
+    println!("--- Creating Table ---");
+    executor.execute("CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)")?;
+
+    // Insert data
+    println!("\n--- Inserting Data ---");
+    for i in 1..=1000 {
+        let sql = format!(
+            "INSERT INTO users VALUES ({}, 'User{}', {})",
+            i,
+            i,
+            20 + (i % 30)
+        );
+        executor.execute(&sql)?;
     }
+    println!("Inserted 1000 rows");
 
-    let row2 = Row::new(vec![
-            Value::Integer(2),
-            Value::Integer(999), // Should be Text!
-            Value::Integer(25),
-        ]);
+    // Query without index
+    println!("\n--- Query WITHOUT Index ---");
+    let result = executor.execute("SELECT * FROM users WHERE id = 500")?;
+    println!("Query took: {:?}", result.duration);
 
-    match schema.validate_row(&row2) {
-        Ok(_) => println!("Row 2 is valid"),
-        Err(e) => println!("Row 2 invalid: {}", e),
-    }
+    // Create index
+    println!("\n--- Creating Index ---");
+    executor.storage.create_index("users", "id")?;
 
-    // Test column lookup
-    if let Some(idx) = schema.get_column_index("name") {
-        println!("Column 'name' is at index: {}", idx);
-    }
+    // Query with index
+    println!("\n--- Query WITH Index ---");
+    let result = executor.execute("SELECT * FROM users WHERE id = 500")?;
+    println!("Query took: {:?}", result.duration);
 
-    // 1. Let's create a valid row
-    let valid_row = Row::new(vec![
-        Value::Integer(1),
-        Value::Text("Alice".to_string()),
-        Value::Integer(30),
-    ]);
-
-    // 2. Let's use the 'get' and 'to_string' methods the compiler warned about
-    if let Some(value) = valid_row.get(1) { // Get the "name" column
-        println!("The user's name is: {}", value.to_string());
-    }
-
-    // 3. Let's use the 'get_column' method
-    if let Some(col) = schema.get_column("age") {
-        println!("The 'age' column type is: {:?}", col.column_type);
-    }
+    Ok(())
 }
